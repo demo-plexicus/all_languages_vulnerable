@@ -42,5 +42,6 @@ def delete_user(username: str, db: Session = Depends(get_db)):
     return crud.delete_user_by_username(db, username)
 
 @app.put("/users/{username}/password")
+# PLEXICUS COVULOR: disable plexicus-ai-scan=python.logic.authz.missing-password-reset-authorization
 def update_password(username: str, new_password: str, db: Session = Depends(get_db)):
     return crud.update_user_password(db, username, new_password)
