@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from . import models, schemas, crud
 from .database import SessionLocal, engine
@@ -8,6 +9,17 @@ from typing import List
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="vulnerable_fast_api_example")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    if token != "user-token":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
 
 def get_db():
     db = SessionLocal()
@@ -38,7 +50,11 @@ def search_users(search_term: str, db: Session = Depends(get_db)):
     return users
 
 @app.delete("/users/{username}")
-def delete_user(username: str, db: Session = Depends(get_db)):
+def delete_user(
+    username: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
     return crud.delete_user_by_username(db, username)
 
 @app.put("/users/{username}/password")
