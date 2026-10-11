@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from . import models, schemas, crud
 from .database import SessionLocal, engine
@@ -19,7 +20,7 @@ def get_db():
 @app.post("/register", response_model=schemas.Token)
 def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     user = crud.create_user(db, user_in.username, user_in.password)
-    return {"access_token": f"user-token", "token_type": "bearer"}
+    return {"access_token": user_in.username, "token_type": "bearer"}
 
 @app.post("/login", response_model=schemas.Token)
 def login(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -29,7 +30,16 @@ def login(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
-    return {"access_token": f"user-token", "token_type": "bearer"}
+    return {"access_token": user_in.username, "token_type": "bearer"}
+
+def get_current_username(credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False))):
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return credentials.credentials
 
 # API endpoints exposing vulnerable functions
 @app.get("/users/search")
@@ -38,7 +48,12 @@ def search_users(search_term: str, db: Session = Depends(get_db)):
     return users
 
 @app.delete("/users/{username}")
-def delete_user(username: str, db: Session = Depends(get_db)):
+def delete_user(username: str, current_username: str = Depends(get_current_username), db: Session = Depends(get_db)):
+    if username != current_username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete another user's account"
+        )
     return crud.delete_user_by_username(db, username)
 
 @app.put("/users/{username}/password")
