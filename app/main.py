@@ -1,8 +1,24 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 from . import models, schemas, crud
 from .database import SessionLocal, engine
 from typing import List
+
+security = HTTPBasic()
+
+def get_current_user(
+    credentials: HTTPBasicCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> models.User:
+    user = crud.get_user_by_username(db, credentials.username)
+    if not user or not crud.verify_password(credentials.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return user
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -38,7 +54,12 @@ def search_users(search_term: str, db: Session = Depends(get_db)):
     return users
 
 @app.delete("/users/{username}")
-def delete_user(username: str, db: Session = Depends(get_db)):
+def delete_user(username: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.username != username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this account"
+        )
     return crud.delete_user_by_username(db, username)
 
 @app.put("/users/{username}/password")
